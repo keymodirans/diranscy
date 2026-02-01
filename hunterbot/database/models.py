@@ -7,12 +7,16 @@ Module ini berisi kelas model untuk interaksi dengan tabel database.
 import sqlite3
 import logging
 import time
+import threading
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from hunterbot.database.schema import get_connection
 
 logger = logging.getLogger(__name__)
+
+# Global lock untuk mencegah concurrent write ke database
+_db_write_lock = threading.Lock()
 
 
 def retry_on_locked(func, max_retries=3):
@@ -143,113 +147,139 @@ class Video:
             "updated_at": self.updated_at,
         }
 
-    @retry_on_locked
+    # UPDATED: Pindahkan retry logic ke dalam, gunakan lock untuk thread safety
     def save(self) -> bool:
         """
         Simpan atau update video ke database.
 
-        Dengan retry logic jika database locked (exponential backoff).
+        Dengan threading lock untuk mencegah concurrent write dan
+        retry logic jika database locked (exponential backoff).
 
         Returns:
             bool: True jika berhasil, False jika gagal.
         """
-        conn = None
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
+        # UPDATED: Gunakan lock untuk serialize write operations
+        with _db_write_lock:
+            return self._save_with_retry()
 
-            if self.id is None:
-                # Insert baru dengan IGNORE untuk skip duplicate
-                cursor.execute("""
-                    INSERT OR IGNORE INTO videos (
-                        video_id, title, channel_id, channel_title, subscriber_count,
-                        upload_date, upload_days_ago, views, likes, thumbnail_url, description,
-                        state, error_message, passed_min_views, passed_max_views_vs_subs, passed_upload_age,
-                        tier1_validated, tier1_score, tier1_language_score, tier1_currency_score,
-                        tier1_cultural_score, tier1_region_score, tier1_has_exclude, channel_location
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    self.video_id,
-                    self.title,
-                    self.channel_id,
-                    self.channel_title,
-                    self.subscriber_count,
-                    self.upload_date,
-                    self.upload_days_ago,
-                    self.views,
-                    self.likes,
-                    self.thumbnail_url,
-                    self.description,
-                    self.state,
-                    self.error_message,
-                    1 if self.passed_min_views else 0,
-                    1 if self.passed_max_views_vs_subs else 0,
-                    1 if self.passed_upload_age else 0,
-                    1 if self.tier1_validated else 0,
-                    self.tier1_score,
-                    self.tier1_language_score,
-                    self.tier1_currency_score,
-                    self.tier1_cultural_score,
-                    self.tier1_region_score,
-                    1 if self.tier1_has_exclude else 0,
-                    self.channel_location
-                ))
+    def _save_with_retry(self) -> bool:
+        """
+        Internal save method dengan retry logic.
 
-                # Cek apakah insert berhasil atau di-skip karena duplicate
-                if cursor.rowcount > 0:
-                    self.id = cursor.lastrowid
-                    logger.info(f"Video baru ditambahkan: {self.video_id}")
+        Returns:
+            bool: True jika berhasil, False jika gagal.
+        """
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = None
+            try:
+                conn = get_connection()
+                cursor = conn.cursor()
+
+                if self.id is None:
+                    # Insert baru dengan IGNORE untuk skip duplicate
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO videos (
+                            video_id, title, channel_id, channel_title, subscriber_count,
+                            upload_date, upload_days_ago, views, likes, thumbnail_url, description,
+                            state, error_message, passed_min_views, passed_max_views_vs_subs, passed_upload_age,
+                            tier1_validated, tier1_score, tier1_language_score, tier1_currency_score,
+                            tier1_cultural_score, tier1_region_score, tier1_has_exclude, channel_location
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        self.video_id,
+                        self.title,
+                        self.channel_id,
+                        self.channel_title,
+                        self.subscriber_count,
+                        self.upload_date,
+                        self.upload_days_ago,
+                        self.views,
+                        self.likes,
+                        self.thumbnail_url,
+                        self.description,
+                        self.state,
+                        self.error_message,
+                        1 if self.passed_min_views else 0,
+                        1 if self.passed_max_views_vs_subs else 0,
+                        1 if self.passed_upload_age else 0,
+                        1 if self.tier1_validated else 0,
+                        self.tier1_score,
+                        self.tier1_language_score,
+                        self.tier1_currency_score,
+                        self.tier1_cultural_score,
+                        self.tier1_region_score,
+                        1 if self.tier1_has_exclude else 0,
+                        self.channel_location
+                    ))
+
+                    # Cek apakah insert berhasil atau di-skip karena duplicate
+                    if cursor.rowcount > 0:
+                        self.id = cursor.lastrowid
+                        logger.info(f"Video baru ditambahkan: {self.video_id}")
+                    else:
+                        logger.debug(f"Video {self.video_id} sudah ada, di-skip")
                 else:
-                    logger.debug(f"Video {self.video_id} sudah ada, di-skip")
-            else:
-                # Update existing
-                cursor.execute("""
-                    UPDATE videos SET
-                        title = ?, channel_id = ?, channel_title = ?, subscriber_count = ?,
-                        upload_date = ?, upload_days_ago = ?, views = ?, likes = ?, thumbnail_url = ?,
-                        description = ?, state = ?, error_message = ?, passed_min_views = ?,
-                        passed_max_views_vs_subs = ?, passed_upload_age = ?,
-                        tier1_validated = ?, tier1_score = ?, tier1_language_score = ?,
-                        tier1_currency_score = ?, tier1_cultural_score = ?, tier1_region_score = ?,
-                        tier1_has_exclude = ?, channel_location = ?
-                    WHERE id = ?
-                """, (
-                    self.title,
-                    self.channel_id,
-                    self.channel_title,
-                    self.subscriber_count,
-                    self.upload_date,
-                    self.upload_days_ago,
-                    self.views,
-                    self.likes,
-                    self.thumbnail_url,
-                    self.description,
-                    self.state,
-                    self.error_message,
-                    1 if self.passed_min_views else 0,
-                    1 if self.passed_max_views_vs_subs else 0,
-                    1 if self.passed_upload_age else 0,
-                    1 if self.tier1_validated else 0,
-                    self.tier1_score,
-                    self.tier1_language_score,
-                    self.tier1_currency_score,
-                    self.tier1_cultural_score,
-                    self.tier1_region_score,
-                    1 if self.tier1_has_exclude else 0,
-                    self.channel_location,
-                    self.id
-                ))
-                logger.info(f"Video diperbarui: {self.id}")
+                    # Update existing
+                    cursor.execute("""
+                        UPDATE videos SET
+                            title = ?, channel_id = ?, channel_title = ?, subscriber_count = ?,
+                            upload_date = ?, upload_days_ago = ?, views = ?, likes = ?, thumbnail_url = ?,
+                            description = ?, state = ?, error_message = ?, passed_min_views = ?,
+                            passed_max_views_vs_subs = ?, passed_upload_age = ?,
+                            tier1_validated = ?, tier1_score = ?, tier1_language_score = ?,
+                            tier1_currency_score = ?, tier1_cultural_score = ?, tier1_region_score = ?,
+                            tier1_has_exclude = ?, channel_location = ?
+                        WHERE id = ?
+                    """, (
+                        self.title,
+                        self.channel_id,
+                        self.channel_title,
+                        self.subscriber_count,
+                        self.upload_date,
+                        self.upload_days_ago,
+                        self.views,
+                        self.likes,
+                        self.thumbnail_url,
+                        self.description,
+                        self.state,
+                        self.error_message,
+                        1 if self.passed_min_views else 0,
+                        1 if self.passed_max_views_vs_subs else 0,
+                        1 if self.passed_upload_age else 0,
+                        1 if self.tier1_validated else 0,
+                        self.tier1_score,
+                        self.tier1_language_score,
+                        self.tier1_currency_score,
+                        self.tier1_cultural_score,
+                        self.tier1_region_score,
+                        1 if self.tier1_has_exclude else 0,
+                        self.channel_location,
+                        self.id
+                    ))
+                    logger.info(f"Video diperbarui: {self.id}")
 
-            conn.commit()
-            return True
+                conn.commit()
+                return True
 
-        except sqlite3.Error as e:
-            logger.error(f"Gagal menyimpan video {self.video_id}: {e}")
-            return False
-        finally:
-            if conn:
-                conn.close()
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    wait_time = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
+                    logger.warning(f"Database locked, retry {attempt + 1}/{max_retries} dalam {wait_time}s")
+                    time.sleep(wait_time)
+                    continue
+                logger.error(f"Database locked error (gagal setelah {max_retries} retry): {e}")
+                return False
+
+            except sqlite3.Error as e:
+                logger.error(f"Gagal menyimpan video {self.video_id}: {e}")
+                return False
+
+            finally:
+                if conn:
+                    conn.close()
+
+        return False
 
     @classmethod
     def get_by_video_id(cls, video_id: str) -> Optional["Video"]:
@@ -262,6 +292,7 @@ class Video:
         Returns:
             Video object atau None jika tidak ditemukan.
         """
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
@@ -271,7 +302,6 @@ class Video:
             """, (video_id,))
 
             row = cursor.fetchone()
-            conn.close()
 
             if row:
                 return cls.from_db_row(row)
@@ -280,6 +310,9 @@ class Video:
         except sqlite3.Error as e:
             logger.error(f"Gagal mengambil video {video_id}: {e}")
             return None
+        finally:
+            if conn:
+                conn.close()
 
     @classmethod
     def get_all(cls, limit: Optional[int] = None) -> List["Video"]:
@@ -292,6 +325,7 @@ class Video:
         Returns:
             List of Video objects.
         """
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
@@ -302,13 +336,15 @@ class Video:
 
             cursor.execute(query)
             rows = cursor.fetchall()
-            conn.close()
 
             return [cls.from_db_row(row) for row in rows]
 
         except sqlite3.Error as e:
             logger.error(f"Gagal mengambil daftar video: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
 
     @classmethod
     def count(cls) -> int:
@@ -318,19 +354,22 @@ class Video:
         Returns:
             Jumlah video dalam database.
         """
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
 
             cursor.execute("SELECT COUNT(*) FROM videos")
             count = cursor.fetchone()[0]
-            conn.close()
 
             return count
 
         except sqlite3.Error as e:
             logger.error(f"Gagal menghitung video: {e}")
             return 0
+        finally:
+            if conn:
+                conn.close()
 
     @classmethod
     def delete_all(cls) -> int:
@@ -340,6 +379,7 @@ class Video:
         Returns:
             Jumlah video yang dihapus.
         """
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
@@ -347,7 +387,6 @@ class Video:
             cursor.execute("DELETE FROM videos")
             count = cursor.rowcount
             conn.commit()
-            conn.close()
 
             logger.info(f"Semua video dihapus: {count} record")
             return count
@@ -355,6 +394,9 @@ class Video:
         except sqlite3.Error as e:
             logger.error(f"Gagal menghapus video: {e}")
             return 0
+        finally:
+            if conn:
+                conn.close()
 
     # Computed properties untuk UI display
     @property

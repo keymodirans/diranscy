@@ -195,6 +195,14 @@ class HunterModule:
         if target_count <= 0:
             raise ValueError("target_count harus lebih dari 0")
 
+        # UPDATED: Hapus semua data lama sebelum scraping mulai
+        from hunterbot.database.models import Video
+        deleted_count = Video.delete_all()
+        if deleted_count > 0:
+            logger.info(f"Database dibersihkan: {deleted_count} video lama dihapus")
+        else:
+            logger.info("Database kosong, siap untuk scraping baru")
+
         logger.info(f"Memulai scraping dengan filter: query='{query}', target={target_count}")
         logger.info(f"Filter: Min {MIN_VIEWS} views, 0-{MAX_DAYS_AGO} days, max {MAX_VIEW_SUB_RATIO}×subs")
 
