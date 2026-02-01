@@ -95,7 +95,7 @@ def init_database(db_path: Optional[str] = None) -> sqlite3.Connection:
         timeout=10.0,  # 10 detik timeout
         isolation_level=None  # Autocommit default, bisa override per transaction
     )
-    conn.row_factory = sqlite3.Row  # Return rows as dict-like objects
+    conn.row_factory = sqlite3.Row  # Return baris sebagai objek seperti dict
 
     # Enable WAL mode untuk better concurrency
     try:
@@ -139,7 +139,7 @@ def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     )
     conn.row_factory = sqlite3.Row
 
-    # Set WAL mode settings untuk setiap koneksi baru
+    # Set mode WAL untuk setiap koneksi baru
     try:
         conn.execute("PRAGMA busy_timeout=10000")
     except sqlite3.Error:

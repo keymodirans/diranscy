@@ -19,7 +19,7 @@ from hunterbot.modules.hunter import HunterModule
 from hunterbot.database.models import Video
 from hunterbot.utils.logger import setup_logging, get_logger
 
-# Setup logging
+# Inisialisasi logging
 setup_logging()
 logger = get_logger(__name__)
 
@@ -44,7 +44,7 @@ class UILogHandler(logging.Handler):
             record: LogRecord dari logger.
         """
         try:
-            # Format log message
+            # Format pesan log
             timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
             level = record.levelname[:4]  # INFO, WARN, ERROR, etc
             message = self.format(record)
@@ -86,7 +86,7 @@ class HunterbotWindow(ctk.CTk):
         self.log_queue = queue.Queue()
         self._setup_ui_logging()
 
-        # Setup UI
+        # Inisialisasi UI
         self._create_widgets()
 
         # UPDATED: Start log polling untuk update UI
@@ -147,7 +147,7 @@ class HunterbotWindow(ctk.CTk):
             # Insert log di end
             self.log_viewer.insert("end", log_entry + "\n")
 
-            # Auto-scroll ke bottom
+            # Scroll otomatis ke bawah
             self.log_viewer.see("end")
 
             # Optional: limit max lines (biar gak makan memory)
@@ -375,7 +375,7 @@ class HunterbotWindow(ctk.CTk):
             # Buat hunter module instance
             hunter = HunterModule()
 
-            # Set progress callback
+            # Set callback progress
             hunter.set_progress_callback(self._update_progress)
 
             # Jalankan scraping dengan target 100 videos (sesuai MVP)

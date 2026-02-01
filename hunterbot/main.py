@@ -12,7 +12,7 @@ from hunterbot.ui.main_window import HunterbotWindow
 from hunterbot.utils.logger import setup_logging, get_logger
 from hunterbot.database.schema import init_database
 
-# Setup logging
+# Inisialisasi logging
 setup_logging()
 logger = get_logger(__name__)
 

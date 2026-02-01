@@ -121,10 +121,10 @@ class GeoValidator:
         # Calculate total score
         total_score = sum(scores.values())
 
-        # Determine pass/fail
-        passed = total_score >= 0.70
+        # UPDATED: Determine pass/fail dengan threshold 50%
+        passed = total_score >= 0.50
 
-        # Additional check: explicit exclude patterns
+        # Cek tambahan: pola eksplisit untuk exclude
         has_exclude = self._has_exclude_patterns(text)
 
         if has_exclude:
@@ -186,7 +186,7 @@ class GeoValidator:
         """
         score = 0.0
 
-        # Check for USD patterns
+        # Cek pola USD
         for pattern in self.USD_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
                 score += 0.10
@@ -214,7 +214,7 @@ class GeoValidator:
         """
         score = 0.0
 
-        # Check for US cultural keywords
+        # Cek kata kunci budaya US
         for keyword in self.US_CULTURAL_KEYWORDS:
             if keyword in text:
                 score += 0.05
@@ -239,7 +239,7 @@ class GeoValidator:
 
         location_upper = channel_location.upper()
 
-        # Check for US
+        # Cek apakah US
         if "US" in location_upper or "USA" in location_upper or "UNITED STATES" in location_upper:
             return 0.10
 

@@ -23,12 +23,13 @@ from hunterbot.modules.geo_validator import get_validator
 logger = get_logger(__name__)
 
 
-# UPDATED: Filter constants sesuai user requirement
-MIN_VIEWS = 5000        # Minimum 5000 views (micro-viral)
-MAX_VIEWS = 50000       # Maksimal 50000 views
-MAX_DAYS_AGO = 21       # Maksimal 21 hari (3 minggu)
-MIN_DAYS_AGO = 0        # Minimal 0 hari
-MAX_SUBSCRIBER = 30000  # Maksimal 30000 subscriber (micro-influencer)
+# UPDATED: Filter constants sesuai user requirement (viral content, no upper limit)
+MIN_VIEWS = 50000          # Minimum 50000 views (viral threshold)
+MAX_VIEWS = 999999999       # Maksimal views tanpa limit (unpractically infinity)
+MAX_DAYS_AGO = 7           # Maksimal 7 hari (1 minggu, fresh content)
+MIN_DAYS_AGO = 0            # Minimal 0 hari
+MAX_SUBSCRIBER = 300000    # Maksimal 300000 subscriber (medium channels)
+TIER1_THRESHOLD = 0.50     # Tier 1 threshold 50% (dari 70%)
 
 
 def calculate_date_range(max_days_ago: int = 21) -> tuple[str, str]:
@@ -144,7 +145,7 @@ class HunterModule:
         # UPDATED: Filter 3 - Max subscriber 30000 (micro-influencer)
         passed_max_subs = subscriber_count <= MAX_SUBSCRIBER
 
-        # All filters must pass
+        # Semua filter harus lulus
         passed_all = (
             passed_min_views and
             passed_max_views and
@@ -210,7 +211,7 @@ class HunterModule:
             logger.info("Database kosong, siap untuk scraping baru")
 
         logger.info(f"Memulai scraping dengan filter: query='{query}', target={target_count}")
-        logger.info(f"Filter: Views {MIN_VIEWS}-{MAX_VIEWS}, Subs max {MAX_SUBSCRIBER}, {MIN_DAYS_AGO}-{MAX_DAYS_AGO} days")
+        logger.info(f"Filter: Views {MIN_VIEWS}-{MAX_VIEWS}, Subs max {MAX_SUBSCRIBER}, {MIN_DAYS_AGO}-{MAX_DAYS_AGO} days, Tier1 threshold {TIER1_THRESHOLD}")
 
         # Hitung date range untuk API filter
         published_after, published_before = calculate_date_range(MAX_DAYS_AGO)
@@ -268,10 +269,10 @@ class HunterModule:
             unique_channel_ids = list(set([v["channel_id"] for v in video_details]))
             channel_details = self.youtube_api.get_channel_details(unique_channel_ids)
 
-            # Apply filter dan simpan yang lulus
+            # Terapkan filter dan simpan yang lulus
             self._update_progress(0, len(video_details), "Apply filter & simpan...")
 
-            # Get Tier 1 validator
+            # Ambil validator Tier 1
             validator = get_validator()
 
             saved_count = 0
@@ -289,7 +290,7 @@ class HunterModule:
                     # UPDATED: Log progress per video
                     logger.info(f"[{idx+1}/{len(video_details)}] Processing: {video_id} | {views:,} views | {subscriber_count:,} subs")
 
-                    # Apply hard filter
+                    # Terapkan hard filter
                     passed_hard, filter_results = self._apply_hard_filters(video_data, subscriber_count)
 
                     # UPDATED: Update statistics dengan filter baru
@@ -308,7 +309,7 @@ class HunterModule:
                         # UPDATED: Log lulus hard filter
                         logger.info(f"[{idx+1}/{len(video_details)}] ✓ Hard filter PASS → Tier1 validating...")
 
-                        # Apply Tier 1 validation (hanya yang lulus hard filter)
+                        # Terapkan validasi Tier 1 (hanya yang lulus hard filter)
                         title = video_data.get("title", "")
                         description = video_data.get("description", "")
                         tier1_result = validator.validate_tier1(title, description, channel_location)
@@ -427,7 +428,7 @@ class HunterModule:
             # Search
             video_ids, _ = self.youtube_api.search_videos(query, max_results=count)
 
-            # Get details
+            # Ambil detail video
             videos = self.youtube_api.get_video_details(video_ids)
 
             return videos

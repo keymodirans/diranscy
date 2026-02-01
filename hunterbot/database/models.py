@@ -91,7 +91,7 @@ class Video:
         self.tier1_has_exclude = kwargs.get("tier1_has_exclude", False)
         self.channel_location = kwargs.get("channel_location", "")
 
-        # Additional metrics
+        # Metrik tambahan
         self.likes = kwargs.get("likes", 0)
 
         self.created_at = kwargs.get("created_at")
@@ -220,7 +220,7 @@ class Video:
                     else:
                         logger.debug(f"Video {self.video_id} sudah ada, di-skip")
                 else:
-                    # Update existing
+                    # Update yang sudah ada
                     cursor.execute("""
                         UPDATE videos SET
                             title = ?, channel_id = ?, channel_title = ?, subscriber_count = ?,
@@ -398,7 +398,7 @@ class Video:
             if conn:
                 conn.close()
 
-    # Computed properties untuk UI display
+    # Properti terhitung untuk tampilan UI
     @property
     def upload_date_only(self) -> str:
         """Tanggal upload saja (YYYY-MM-DD)."""

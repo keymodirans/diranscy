@@ -45,7 +45,7 @@ def setup_logging(log_level: str = None) -> None:
     if log_level is None:
         log_level = Config.LOG_LEVEL
 
-    # Setup root logger
+    # Inisialisasi root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level))
 

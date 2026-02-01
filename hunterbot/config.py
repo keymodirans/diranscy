@@ -32,7 +32,7 @@ class Config:
     DATABASE_BACKUP_DIR: Path = BASE_DIR / "backups"
     DATABASE_BACKUP_DIR.mkdir(exist_ok=True)
 
-    # API Keys (dari environment variables)
+    # Kunci API (dari environment variables)
     YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
     DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")

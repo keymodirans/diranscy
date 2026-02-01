@@ -155,7 +155,7 @@ class YouTubeAPI:
         """
         all_videos = []
 
-        # Auto-batching: pecah jadi chunks of 50
+        # Batch otomatis: pecah jadi chunks of 50
         for i in range(0, len(video_ids), 50):
             chunk = video_ids[i:i + 50]
             logger.info(f"Mengambil detail {len(chunk)} videos (batch {i // 50 + 1})")
@@ -225,7 +225,7 @@ class YouTubeAPI:
         """
         all_channel_data = {}
 
-        # Auto-batching: pecah jadi chunks of 50
+        # Batch otomatis: pecah jadi chunks of 50
         for i in range(0, len(channel_ids), 50):
             chunk = channel_ids[i:i + 50]
             logger.info(f"Mengambil detail {len(chunk)} channels (batch {i // 50 + 1})")
@@ -253,9 +253,9 @@ class YouTubeAPI:
                 for item in data.get("items", []):
                     channel_id = item["id"]
                     subscriber_count = int(item["statistics"].get("subscriberCount", 0))
-                    # Get location from snippet (country)
+                    # Ambil lokasi dari snippet (negara)
                     location = item["snippet"].get("country", "")
-                    # Or from localized title/description
+                    # Atau dari localized title/description
                     if not location:
                         location = item["snippet"].get("localized", {}).get("country", "")
 
@@ -298,7 +298,7 @@ class YouTubeAPI:
             if upload_date.tzinfo is None:
                 upload_date = upload_date.replace(tzinfo=timezone.utc)
 
-            # Get current time in UTC
+            # Ambil waktu sekarang dalam UTC
             now = datetime.now(timezone.utc)
 
             # Calculate difference
@@ -327,7 +327,7 @@ class YouTubeAPI:
             if quality in thumbnails:
                 return thumbnails[quality]["url"]
 
-        # Fallback
+        # Cadangan kalau tidak ada thumbnail
         return thumbnails.get("default", {}).get("url", "")
 
     def _handle_api_error(self, error_data: Dict[str, Any]) -> None:
