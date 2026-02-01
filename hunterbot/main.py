@@ -10,6 +10,7 @@ import logging
 from hunterbot.config import Config
 from hunterbot.ui.main_window import HunterbotWindow
 from hunterbot.utils.logger import setup_logging, get_logger
+from hunterbot.database.schema import init_database
 
 # Setup logging
 setup_logging()
@@ -43,6 +44,11 @@ def main():
     logger.info("=" * 50)
     logger.info("MEMULAI HUNTERBOT APLIKASI")
     logger.info("=" * 50)
+
+    # UPDATED: Inisialisasi database sebelum aplikasi jalan
+    logger.info("Inisialisasi database...")
+    init_database()
+    logger.info("Database siap")
 
     # Cek config
     if not check_config():

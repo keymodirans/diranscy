@@ -155,12 +155,13 @@ class HunterbotWindow(ctk.CTk):
 
     def _create_widgets(self) -> None:
         """Buat semua widget UI."""
-        # Configure grid - UPDATED: Row 2 untuk split section (logs + results)
+        # UPDATED: Reorganize layout - logs di bawah status bar
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=0)  # Header - fixed
         self.grid_rowconfigure(1, weight=0)  # Input - fixed
-        self.grid_rowconfigure(2, weight=1)  # Split section - expandable
+        self.grid_rowconfigure(2, weight=1)  # Results - expandable
         self.grid_rowconfigure(3, weight=0)  # Status - fixed
+        self.grid_rowconfigure(4, weight=0)  # Logs - fixed height
 
         # Header
         self._create_header()
@@ -168,11 +169,14 @@ class HunterbotWindow(ctk.CTk):
         # Input Section
         self._create_input_section()
 
-        # UPDATED: Split Section (Logs + Results)
-        self._create_split_section()
+        # Results Section (expandable)
+        self._create_results_section()
 
         # Status Bar
         self._create_status_bar()
+
+        # UPDATED: Logs Section (di bawah status bar)
+        self._create_logs_section()
 
     def _create_header(self) -> None:
         """Buat header frame."""
@@ -226,71 +230,87 @@ class HunterbotWindow(ctk.CTk):
         )
         button.grid(row=0, column=2, pady=10)
 
-    def _create_split_section(self) -> None:
+    def _create_results_section(self) -> None:
         """
-        Buat section terbagi: Logs Viewer (atas) + Results Table (bawah).
+        Buat section hasil scraping (expandable).
 
-        UPDATED: Logs sekarang muncul real-time di UI.
+        UPDATED: Results table saja, tanpa split.
         """
-        # Parent frame untuk split
-        split_frame = ctk.CTkFrame(self)
-        split_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
+        results_frame = ctk.CTkFrame(self)
+        results_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
+        results_frame.grid_rowconfigure(1, weight=1)
+        results_frame.grid_columnconfigure(0, weight=1)
 
-        # Configure grid untuk split: 40% logs, 60% results
-        split_frame.grid_rowconfigure(0, weight=2)  # Logs - 40%
-        split_frame.grid_rowconfigure(1, weight=3)  # Results - 60%
-        split_frame.grid_columnconfigure(0, weight=1)
+        # Label untuk tabel
+        label = ctk.CTkLabel(
+            results_frame,
+            text="Hasil Scraping",
+            font=("Segoe UI", 12, "bold")
+        )
+        label.pack(side="top", pady=(10, 5))
 
-        # ==================== LOGS VIEWER (ATAS) ====================
-        logs_frame = ctk.CTkFrame(split_frame)
-        logs_frame.grid(row=0, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
-        logs_frame.grid_rowconfigure(1, weight=1)
-        logs_frame.grid_columnconfigure(0, weight=1)
+        # Text widget untuk hasil (MVP: simple text)
+        self.results_text = ctk.CTkTextbox(
+            results_frame,
+            font=("Consolas", 10)
+        )
+        self.results_text.pack(
+            side="top",
+            fill="both",
+            expand=True,
+            padx=(10, 10),
+            pady=(0, 10)
+        )
 
-        # Logs header label
+    def _create_logs_section(self) -> None:
+        """
+        Buat section progress logs (fixed height).
+
+        UPDATED: Logs di bawah status bar.
+        """
+        # Container frame untuk logs dengan fixed height
+        logs_container = ctk.CTkFrame(self)
+        logs_container.grid(row=4, column=0, sticky="nsew", padx=20, pady=(0, 10))
+        logs_container.grid_rowconfigure(0, weight=1)
+        logs_container.grid_columnconfigure(0, weight=1)
+        logs_container.grid_columnconfigure(1, weight=0)
+
+        # Logs header dengan tombol reset
+        logs_header_frame = ctk.CTkFrame(logs_container)
+        logs_header_frame.grid(row=0, column=0, sticky="ew", padx=(5, 5), pady=(5, 5))
+        logs_header_frame.grid_columnconfigure(0, weight=1)
+        logs_header_frame.grid_columnconfigure(1, weight=0)
+
+        # Logs label
         logs_label = ctk.CTkLabel(
-            logs_frame,
+            logs_header_frame,
             text="Progress Logs",
             font=("Segoe UI", 10, "bold")
         )
-        logs_label.grid(row=0, column=0, sticky="w", padx=(10, 10), pady=(5, 0))
+        logs_label.grid(row=0, column=0, sticky="w", padx=(10, 5))
+
+        # UPDATED: Tombol reset logs
+        reset_logs_btn = ctk.CTkButton(
+            logs_header_frame,
+            text="Reset Logs",
+            command=self._reset_logs,
+            width=80,
+            height=24
+        )
+        reset_logs_btn.grid(row=0, column=1, padx=(5, 10), pady=(0, 0))
 
         # Logs viewer textbox
         self.log_viewer = ctk.CTkTextbox(
-            logs_frame,
+            logs_container,
             font=("Consolas", 9),
-            activate_scrollbars=True
+            activate_scrollbars=True,
+            height=150  # Fixed height
         )
-        self.log_viewer.grid(row=1, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
+        self.log_viewer.grid(row=0, column=0, sticky="nsew", padx=(5, 5), pady=(0, 5))
 
         # Initial log message
         self.log_viewer.insert("1.0", "=== Log Progress ===\n")
         self.log_viewer.insert("end", "Siap untuk scraping...\n\n")
-
-        # ==================== RESULTS TABLE (BAWAH) ====================
-        results_frame = ctk.CTkFrame(split_frame)
-        results_frame.grid(row=1, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
-        results_frame.grid_rowconfigure(1, weight=1)
-        results_frame.grid_columnconfigure(0, weight=1)
-
-        # Results header label
-        results_label = ctk.CTkLabel(
-            results_frame,
-            text="Hasil Scraping",
-            font=("Segoe UI", 10, "bold")
-        )
-        results_label.grid(row=0, column=0, sticky="w", padx=(10, 10), pady=(5, 0))
-
-        # Results table textbox
-        self.results_text = ctk.CTkTextbox(
-            results_frame,
-            font=("Consolas", 9),
-            activate_scrollbars=True
-        )
-        self.results_text.grid(row=1, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
-
-        # Initial message
-        self.results_text.insert("1.0", "Belum ada data. Silakan jalankan scraping.")
 
     def _create_status_bar(self) -> None:
         """Buat status bar."""
@@ -392,6 +412,18 @@ class HunterbotWindow(ctk.CTk):
             self.status_var.set(f"Scraping: {current}/{total} ({percentage}%)")
         else:
             self.status_var.set(f"Scraping: {current} video...")
+
+    def _reset_logs(self) -> None:
+        """
+        Reset log viewer untuk kosongkan logs.
+
+        Dipanggil saat tombol "Reset Logs" diklik.
+        """
+        if hasattr(self, "log_viewer"):
+            self.log_viewer.delete("1.0", "end")
+            self.log_viewer.insert("1.0", "=== Log Progress ===\n")
+            self.log_viewer.insert("end", "Logs telah di-reset. Siap untuk logging baru.\n\n")
+            logger.info("Log viewer di-reset oleh user")
 
     def _display_results(self) -> None:
         """Tampilkan hasil scraping ke text widget."""

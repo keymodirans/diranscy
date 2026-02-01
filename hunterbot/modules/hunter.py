@@ -23,11 +23,12 @@ from hunterbot.modules.geo_validator import get_validator
 logger = get_logger(__name__)
 
 
-# Filter constants sesuai PRD
-MIN_VIEWS = 50000  # Minimum 50k views
-MAX_DAYS_AGO = 21  # Maksimal 21 hari (3 minggu)
-MIN_DAYS_AGO = 0   # Minimal 0 hari (di-reset karena kita pakai API date filter)
-MAX_VIEW_SUB_RATIO = 50  # Maksimal views = 50× subscriber
+# UPDATED: Filter constants sesuai user requirement
+MIN_VIEWS = 5000        # Minimum 5000 views (micro-viral)
+MAX_VIEWS = 50000       # Maksimal 50000 views
+MAX_DAYS_AGO = 21       # Maksimal 21 hari (3 minggu)
+MIN_DAYS_AGO = 0        # Minimal 0 hari
+MAX_SUBSCRIBER = 30000  # Maksimal 30000 subscriber (micro-influencer)
 
 
 def calculate_date_range(max_days_ago: int = 21) -> tuple[str, str]:
@@ -72,12 +73,13 @@ class HunterModule:
         self.youtube_api = YouTubeAPI(api_key)
         self.progress_callback: Optional[Callable] = None
 
-        # Filter statistics
+        # UPDATED: Filter statistics dengan filter baru
         self.stats = {
             "total_scraped": 0,
             "passed_min_views": 0,
+            "passed_max_views": 0,
             "passed_upload_age": 0,
-            "passed_max_views_vs_subs": 0,
+            "passed_max_subs": 0,
             "passed_all": 0,
             "failed": 0
         }
@@ -115,7 +117,9 @@ class HunterModule:
         subscriber_count: int
     ) -> tuple[bool, dict]:
         """
-        Apply hard filter sesuai PRD.
+        Apply hard filter sesuai user requirement.
+
+        UPDATED: Micro-influencer hunting (5k-50k views, max 30k subs)
 
         Args:
             video_data: Video metadata dari YouTube API.
@@ -130,30 +134,31 @@ class HunterModule:
         # Calculate days ago
         days_ago = self.youtube_api.calculate_days_ago(upload_date)
 
-        # Filter 1: Min views 50k
-        passed_min_views = views >= MIN_VIEWS
+        # UPDATED: Filter 1 - Views range 5000 - 50000
+        passed_min_views = views >= MIN_VIEWS      # 5000 views minimum
+        passed_max_views = views <= MAX_VIEWS      # 50000 views maximum
 
-        # Filter 2: Upload age 0-21 days (API sudah filter by date, ini double-check)
-        # API filter publishedAfter jadi kita hanya validasi max 21 days
+        # UPDATED: Filter 2 - Upload age 0-21 days
         passed_upload_age = days_ago <= MAX_DAYS_AGO
 
-        # Filter 3: Views ≤ 50× subscriber (anti-paid promotion)
-        # Skip kalau subscriber_count = 0 (channel privat/error)
-        max_allowed_views = subscriber_count * MAX_VIEW_SUB_RATIO
-        passed_max_views_vs_subs = (
-            subscriber_count > 0 and views <= max_allowed_views
-        )
+        # UPDATED: Filter 3 - Max subscriber 30000 (micro-influencer)
+        passed_max_subs = subscriber_count <= MAX_SUBSCRIBER
 
         # All filters must pass
-        passed_all = passed_min_views and passed_upload_age and passed_max_views_vs_subs
+        passed_all = (
+            passed_min_views and
+            passed_max_views and
+            passed_upload_age and
+            passed_max_subs
+        )
 
         filter_results = {
             "passed_min_views": passed_min_views,
+            "passed_max_views": passed_max_views,
             "passed_upload_age": passed_upload_age,
-            "passed_max_views_vs_subs": passed_max_views_vs_subs,
+            "passed_max_subs": passed_max_subs,
             "passed_all": passed_all,
             "days_ago": days_ago,
-            "max_allowed_views": max_allowed_views
         }
 
         return passed_all, filter_results
@@ -179,12 +184,13 @@ class HunterModule:
             ValueError: Jika parameter tidak valid.
             YouTubeAPIError: Jika scraping gagal.
         """
-        # Reset statistics
+        # UPDATED: Reset statistics dengan filter baru
         self.stats = {
             "total_scraped": 0,
             "passed_min_views": 0,
+            "passed_max_views": 0,
             "passed_upload_age": 0,
-            "passed_max_views_vs_subs": 0,
+            "passed_max_subs": 0,
             "passed_all": 0,
             "failed": 0
         }
@@ -204,7 +210,7 @@ class HunterModule:
             logger.info("Database kosong, siap untuk scraping baru")
 
         logger.info(f"Memulai scraping dengan filter: query='{query}', target={target_count}")
-        logger.info(f"Filter: Min {MIN_VIEWS} views, 0-{MAX_DAYS_AGO} days, max {MAX_VIEW_SUB_RATIO}×subs")
+        logger.info(f"Filter: Views {MIN_VIEWS}-{MAX_VIEWS}, Subs max {MAX_SUBSCRIBER}, {MIN_DAYS_AGO}-{MAX_DAYS_AGO} days")
 
         # Hitung date range untuk API filter
         published_after, published_before = calculate_date_range(MAX_DAYS_AGO)
@@ -277,20 +283,30 @@ class HunterModule:
                     channel_data = channel_details.get(channel_id, {})
                     subscriber_count = channel_data.get("subscriber_count", 0)
                     channel_location = channel_data.get("location", "")
+                    views = video_data.get("views", 0)
+                    video_id = video_data.get("video_id", "")
+
+                    # UPDATED: Log progress per video
+                    logger.info(f"[{idx+1}/{len(video_details)}] Processing: {video_id} | {views:,} views | {subscriber_count:,} subs")
 
                     # Apply hard filter
                     passed_hard, filter_results = self._apply_hard_filters(video_data, subscriber_count)
 
-                    # Update statistics
+                    # UPDATED: Update statistics dengan filter baru
                     if filter_results["passed_min_views"]:
                         self.stats["passed_min_views"] += 1
+                    if filter_results["passed_max_views"]:
+                        self.stats["passed_max_views"] += 1
                     if filter_results["passed_upload_age"]:
                         self.stats["passed_upload_age"] += 1
-                    if filter_results["passed_max_views_vs_subs"]:
-                        self.stats["passed_max_views_vs_subs"] += 1
+                    if filter_results["passed_max_subs"]:
+                        self.stats["passed_max_subs"] += 1
 
                     if passed_hard:
                         self.stats["passed_all"] += 1
+
+                        # UPDATED: Log lulus hard filter
+                        logger.info(f"[{idx+1}/{len(video_details)}] ✓ Hard filter PASS → Tier1 validating...")
 
                         # Apply Tier 1 validation (hanya yang lulus hard filter)
                         title = video_data.get("title", "")
@@ -300,6 +316,9 @@ class HunterModule:
                         # Simpan hanya yang lulus Tier 1
                         if tier1_result["passed"]:
                             tier1_passed += 1
+
+                            # UPDATED: Log lulus Tier 1
+                            logger.info(f"[{idx+1}/{len(video_details)}] ✓✓ Tier1 PASS (score: {tier1_result['score']:.2f}) → SAVING...")
 
                             video = Video(
                                 video_id=video_data["video_id"],
@@ -314,8 +333,9 @@ class HunterModule:
                                 thumbnail_url=video_data["thumbnail_url"],
                                 description=description,
                                 state=Video.STATE_SCRAPED,
+                                # UPDATED: Hapus field lama passed_max_views_vs_subs
                                 passed_min_views=True,
-                                passed_max_views_vs_subs=True,
+                                passed_max_views=True,
                                 passed_upload_age=True,
                                 # Tier 1 fields
                                 tier1_validated=True,
@@ -330,13 +350,26 @@ class HunterModule:
 
                             if video.save():
                                 saved_count += 1
-                                logger.debug(f"Video {video_data['video_id']} lulus Tier1 (score: {tier1_result['score']:.2f})")
+                                logger.info(f"[{idx+1}/{len(video_details)}] ✓✓ SAVED: {video_data['video_id']}")
+                            else:
+                                logger.warning(f"[{idx+1}/{len(video_details)}] ✗ FAILED TO SAVE: {video_data['video_id']}")
                         else:
                             self.stats["failed"] += 1
-                            logger.debug(f"Video {video_data['video_id']} TIDAK lulus Tier1 (score: {tier1_result['score']:.2f})")
+                            logger.info(f"[{idx+1}/{len(video_details)}] ✗ Tier1 FAIL (score: {tier1_result['score']:.2f})")
                     else:
                         self.stats["failed"] += 1
-                        logger.debug(f"Video {video_data['video_id']} tidak lulus hard filter")
+                        # UPDATED: Log gagal hard filter dengan alasan
+                        fail_reason = []
+                        if not filter_results["passed_min_views"]:
+                            fail_reason.append(f"views={views}<{MIN_VIEWS}")
+                        if not filter_results["passed_max_views"]:
+                            fail_reason.append(f"views={views}>{MAX_VIEWS}")
+                        if not filter_results["passed_upload_age"]:
+                            fail_reason.append(f"age={filter_results['days_ago']}d>{MAX_DAYS_AGO}")
+                        if not filter_results["passed_max_subs"]:
+                            fail_reason.append(f"subs={subscriber_count}>{MAX_SUBSCRIBER}")
+                        reason_str = ", ".join(fail_reason)
+                        logger.info(f"[{idx+1}/{len(video_details)}] ✗ Hard filter FAIL: {reason_str}")
 
                     self._update_progress(idx + 1, len(video_details))
 
@@ -361,15 +394,16 @@ class HunterModule:
             logger.exception(f"Error tidak terduga saat scraping: {e}")
             raise
 
-        # Log statistik
+        # UPDATED: Log statistik dengan filter baru
         logger.info("=" * 50)
         logger.info("SCRAPING SELESAI - STATISTIK")
         logger.info("=" * 50)
         logger.info(f"Total discraping: {self.stats['total_scraped']}")
-        logger.info(f"Lulus min views: {self.stats['passed_min_views']}")
-        logger.info(f"Lulus upload age: {self.stats['passed_upload_age']}")
-        logger.info(f"Lulus max views vs subs: {self.stats['passed_max_views_vs_subs']}")
-        logger.info(f"Lulus hard filter: {self.stats['passed_all']}")
+        logger.info(f"Lulus min views ({MIN_VIEWS}+): {self.stats['passed_min_views']}")
+        logger.info(f"Lulus max views ({MAX_VIEWS}-): {self.stats['passed_max_views']}")
+        logger.info(f"Lulus upload age (0-{MAX_DAYS_AGO} days): {self.stats['passed_upload_age']}")
+        logger.info(f"Lulus max subs ({MAX_SUBSCRIBER}-): {self.stats['passed_max_subs']}")
+        logger.info(f"Lulus SEMUA filter: {self.stats['passed_all']}")
         logger.info(f"Lulus Tier 1: {tier1_passed}")
         logger.info(f"Gagal/Tidak lulus: {self.stats['failed']}")
         logger.info("=" * 50)
