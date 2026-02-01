@@ -1,0 +1,20 @@
+# Hunterbot MVP - Minimal Requirements
+# Updated 2026-02-02
+
+# GUI Framework
+customtkinter==5.2.0
+
+# HTTP Client
+requests==2.31.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Language Detection for Tier 1 Validation
+langdetect==1.0.9
+
+# Logging (Python stdlib, tapi tetap list untuk setup environments)
+# - logging (built-in)
+
+# Development
+pytest==7.4.0
