@@ -7,6 +7,9 @@ UI utama aplikasi Hunterbot menggunakan CustomTkinter.
 import tkinter as tk
 from tkinter import messagebox
 import threading
+import logging
+from datetime import datetime
+import queue
 
 import customtkinter as ctk
 from typing import Optional, List, Dict, Any
@@ -19,6 +22,40 @@ from hunterbot.utils.logger import setup_logging, get_logger
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
+
+
+# UPDATED: Custom LogHandler untuk mengirim log ke UI
+class UILogHandler(logging.Handler):
+    """
+    LogHandler yang mengirim log message ke UI via queue.
+
+    Thread-safe untuk digunakan di background thread.
+    """
+
+    def __init__(self, log_queue: queue.Queue):
+        super().__init__()
+        self.log_queue = log_queue
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Kirim log record ke queue.
+
+        Args:
+            record: LogRecord dari logger.
+        """
+        try:
+            # Format log message
+            timestamp = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+            level = record.levelname[:4]  # INFO, WARN, ERROR, etc
+            message = self.format(record)
+
+            # Kirim ke queue
+            log_entry = f"[{timestamp}] [{level}] {message}"
+            self.log_queue.put(log_entry)
+
+        except Exception:
+            # Self.handleError() biar gak crash logging
+            self.handleError(record)
 
 
 class HunterbotWindow(ctk.CTk):
@@ -45,21 +82,84 @@ class HunterbotWindow(ctk.CTk):
         self.progress_var = tk.DoubleVar(value=0.0)
         self.videos_data: List[Dict[str, Any]] = []
 
+        # UPDATED: Setup log queue untuk UI
+        self.log_queue = queue.Queue()
+        self._setup_ui_logging()
+
         # Setup UI
         self._create_widgets()
+
+        # UPDATED: Start log polling untuk update UI
+        self._poll_logs()
 
         # Center window
         self.center_window()
 
         logger.info("Main window dibuat")
 
+    def _setup_ui_logging(self) -> None:
+        """
+        Setup logging handler untuk mengirim log ke UI.
+        """
+        # Buat UI log handler
+        self.ui_log_handler = UILogHandler(self.log_queue)
+        self.ui_log_handler.setLevel(logging.INFO)  # Hanya INFO ke atas
+
+        # Format: simple tanpa timestamp karena kita tambah manual
+        formatter = logging.Formatter("%(message)s")
+        self.ui_log_handler.setFormatter(formatter)
+
+        # Add ke root logger (atau specific logger yang mau dimonitor)
+        # Monitor semua log dari hunterbot modules
+        for logger_name in ["hunterbot.modules.hunter", "hunterbot.api.youtube_api",
+                           "hunterbot.modules.geo_validator", "hunterbot.database.models"]:
+            log = logging.getLogger(logger_name)
+            log.addHandler(self.ui_log_handler)
+
+    def _poll_logs(self) -> None:
+        """
+        Poll log queue dan update UI log viewer.
+
+        Dipanggil setiap 100ms via after().
+        """
+        try:
+            # Proses semua logs yang ada di queue
+            while not self.log_queue.empty():
+                log_entry = self.log_queue.get_nowait()
+                self._append_log(log_entry)
+
+        except queue.Empty:
+            pass
+
+        # Schedule next poll
+        self.after(100, self._poll_logs)
+
+    def _append_log(self, log_entry: str) -> None:
+        """
+        Append log entry ke log viewer widget.
+
+        Thread-safe dari _poll_logs (main thread).
+
+        Args:
+            log_entry: Formatted log message.
+        """
+        if hasattr(self, "log_viewer"):
+            # Insert log di end
+            self.log_viewer.insert("end", log_entry + "\n")
+
+            # Auto-scroll ke bottom
+            self.log_viewer.see("end")
+
+            # Optional: limit max lines (biar gak makan memory)
+            # self.log_viewer.delete("1.0", "100.0")  # Keep only last 900 lines
+
     def _create_widgets(self) -> None:
         """Buat semua widget UI."""
-        # Configure grid - UPDATED: Row 2 untuk results section yang expandable
+        # Configure grid - UPDATED: Row 2 untuk split section (logs + results)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=0)  # Header - fixed
         self.grid_rowconfigure(1, weight=0)  # Input - fixed
-        self.grid_rowconfigure(2, weight=1)  # Results - expandable
+        self.grid_rowconfigure(2, weight=1)  # Split section - expandable
         self.grid_rowconfigure(3, weight=0)  # Status - fixed
 
         # Header
@@ -68,8 +168,8 @@ class HunterbotWindow(ctk.CTk):
         # Input Section
         self._create_input_section()
 
-        # Results Section
-        self._create_results_section()
+        # UPDATED: Split Section (Logs + Results)
+        self._create_split_section()
 
         # Status Bar
         self._create_status_bar()
@@ -126,33 +226,71 @@ class HunterbotWindow(ctk.CTk):
         )
         button.grid(row=0, column=2, pady=10)
 
-    def _create_results_section(self) -> None:
-        """Buat section hasil scraping."""
-        results_frame = ctk.CTkFrame(self)
-        results_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
-        results_frame.grid_rowconfigure(0, weight=1)
+    def _create_split_section(self) -> None:
+        """
+        Buat section terbagi: Logs Viewer (atas) + Results Table (bawah).
+
+        UPDATED: Logs sekarang muncul real-time di UI.
+        """
+        # Parent frame untuk split
+        split_frame = ctk.CTkFrame(self)
+        split_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
+
+        # Configure grid untuk split: 40% logs, 60% results
+        split_frame.grid_rowconfigure(0, weight=2)  # Logs - 40%
+        split_frame.grid_rowconfigure(1, weight=3)  # Results - 60%
+        split_frame.grid_columnconfigure(0, weight=1)
+
+        # ==================== LOGS VIEWER (ATAS) ====================
+        logs_frame = ctk.CTkFrame(split_frame)
+        logs_frame.grid(row=0, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
+        logs_frame.grid_rowconfigure(1, weight=1)
+        logs_frame.grid_columnconfigure(0, weight=1)
+
+        # Logs header label
+        logs_label = ctk.CTkLabel(
+            logs_frame,
+            text="Progress Logs",
+            font=("Segoe UI", 10, "bold")
+        )
+        logs_label.grid(row=0, column=0, sticky="w", padx=(10, 10), pady=(5, 0))
+
+        # Logs viewer textbox
+        self.log_viewer = ctk.CTkTextbox(
+            logs_frame,
+            font=("Consolas", 9),
+            activate_scrollbars=True
+        )
+        self.log_viewer.grid(row=1, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
+
+        # Initial log message
+        self.log_viewer.insert("1.0", "=== Log Progress ===\n")
+        self.log_viewer.insert("end", "Siap untuk scraping...\n\n")
+
+        # ==================== RESULTS TABLE (BAWAH) ====================
+        results_frame = ctk.CTkFrame(split_frame)
+        results_frame.grid(row=1, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
+        results_frame.grid_rowconfigure(1, weight=1)
         results_frame.grid_columnconfigure(0, weight=1)
 
-        # Label untuk tabel
-        label = ctk.CTkLabel(
+        # Results header label
+        results_label = ctk.CTkLabel(
             results_frame,
             text="Hasil Scraping",
-            font=("Segoe UI", 12, "bold")
+            font=("Segoe UI", 10, "bold")
         )
-        label.pack(side="top", pady=(10, 5))
+        results_label.grid(row=0, column=0, sticky="w", padx=(10, 10), pady=(5, 0))
 
-        # Text widget untuk hasil (MVP: simple text)
+        # Results table textbox
         self.results_text = ctk.CTkTextbox(
             results_frame,
-            font=("Consolas", 10)
+            font=("Consolas", 9),
+            activate_scrollbars=True
         )
-        self.results_text.pack(
-            side="top",
-            fill="both",
-            expand=True,
-            padx=(10, 10),
-            pady=(0, 10)
-        )
+        self.results_text.grid(row=1, column=0, sticky="nsew", padx=(5, 5), pady=(5, 5))
+
+        # Initial message
+        self.results_text.insert("1.0", "Belum ada data. Silakan jalankan scraping.")
 
     def _create_status_bar(self) -> None:
         """Buat status bar."""
@@ -186,9 +324,19 @@ class HunterbotWindow(ctk.CTk):
             messagebox.showwarning("Input Kosong", "Silakan masukkan kategori atau keyword")
             return
 
+        # UPDATED: Clear logs sebelum scraping baru
+        if hasattr(self, "log_viewer"):
+            self.log_viewer.delete("1.0", "end")
+            self.log_viewer.insert("1.0", f"=== Memulai Scraping: {query} ===\n\n")
+
+        # Clear results
+        if hasattr(self, "results_text"):
+            self.results_text.delete("1.0", "end")
+            self.results_text.insert("1.0", "Sedang scraping...\n")
+
         logger.info(f"User memulai scraping: query='{query}'")
 
-        # Disable button
+        # Update status
         self.status_var.set("Memulai scraping...")
 
         # Run scraping di background thread
