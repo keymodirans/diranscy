@@ -257,17 +257,30 @@ class HunterbotWindow(ctk.CTk):
         # Bersihkan text widget
         self.results_text.delete("1.0", "end")
 
-        # Header
+        # Header dengan 9 kolom
         header = (
-            f"{'NO.':<5} {'TITLE':<50} {'CHANNEL':<30} {'VIEWS':>10}\n"
+            f"{'NO.':<4} {'NEGARA':<12} {'TANGGAL':<12} {'WAKTU':<8} {'UMUR':<6} "
+            f"{'TAYANGAN':>12} {'SUBSCRIBER':>12} {'VPH':>10} {'ER%':>8} {'CHANNEL':<25}\n"
         )
         self.results_text.insert("end", header)
-        self.results_text.insert("end", "-" * 100 + "\n")
+        self.results_text.insert("end", "-" * 130 + "\n")
 
         # Data rows
         for idx, video in enumerate(videos, 1):
-            title = video.title[:47] + "..." if len(video.title) > 47 else video.title
-            row = f"{idx:<5} {title:<50} {video.channel_title:<30} {video.views:>10}\n"
+            country = video.country_name[:10] if video.country_name else "Unknown"
+            date_only = video.upload_date_only
+            time_only = video.upload_time_only
+            age = f"{video.upload_days_ago}h" if video.upload_days_ago else "0h"
+            views = video.views_formatted
+            subs = video.subscribers_formatted
+            vph = f"{video.vph:.0f}" if video.vph > 0 else "0"
+            er = f"{video.engagement_rate:.1f}" if video.engagement_rate > 0 else "0.0"
+            channel_short = video.channel_title[:22] + "..." if len(video.channel_title) > 22 else video.channel_title
+
+            row = (
+                f"{idx:<4} {country:<12} {date_only:<12} {time_only:<8} {age:<6} "
+                f"{views:>12} {subs:>12} {vph:>10} {er:>8} {channel_short:<25}\n"
+            )
             self.results_text.insert("end", row)
 
         # Footer

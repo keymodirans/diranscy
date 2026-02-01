@@ -87,6 +87,9 @@ class Video:
         self.tier1_has_exclude = kwargs.get("tier1_has_exclude", False)
         self.channel_location = kwargs.get("channel_location", "")
 
+        # Additional metrics
+        self.likes = kwargs.get("likes", 0)
+
         self.created_at = kwargs.get("created_at")
         self.updated_at = kwargs.get("updated_at")
 
@@ -120,6 +123,7 @@ class Video:
             "upload_date": self.upload_date,
             "upload_days_ago": self.upload_days_ago,
             "views": self.views,
+            "likes": self.likes,
             "thumbnail_url": self.thumbnail_url,
             "description": self.description,
             "state": self.state,
@@ -159,11 +163,11 @@ class Video:
                 cursor.execute("""
                     INSERT OR IGNORE INTO videos (
                         video_id, title, channel_id, channel_title, subscriber_count,
-                        upload_date, upload_days_ago, views, thumbnail_url, description,
+                        upload_date, upload_days_ago, views, likes, thumbnail_url, description,
                         state, error_message, passed_min_views, passed_max_views_vs_subs, passed_upload_age,
                         tier1_validated, tier1_score, tier1_language_score, tier1_currency_score,
                         tier1_cultural_score, tier1_region_score, tier1_has_exclude, channel_location
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     self.video_id,
                     self.title,
@@ -173,6 +177,7 @@ class Video:
                     self.upload_date,
                     self.upload_days_ago,
                     self.views,
+                    self.likes,
                     self.thumbnail_url,
                     self.description,
                     self.state,
@@ -201,7 +206,7 @@ class Video:
                 cursor.execute("""
                     UPDATE videos SET
                         title = ?, channel_id = ?, channel_title = ?, subscriber_count = ?,
-                        upload_date = ?, upload_days_ago = ?, views = ?, thumbnail_url = ?,
+                        upload_date = ?, upload_days_ago = ?, views = ?, likes = ?, thumbnail_url = ?,
                         description = ?, state = ?, error_message = ?, passed_min_views = ?,
                         passed_max_views_vs_subs = ?, passed_upload_age = ?,
                         tier1_validated = ?, tier1_score = ?, tier1_language_score = ?,
@@ -216,6 +221,7 @@ class Video:
                     self.upload_date,
                     self.upload_days_ago,
                     self.views,
+                    self.likes,
                     self.thumbnail_url,
                     self.description,
                     self.state,
@@ -349,3 +355,107 @@ class Video:
         except sqlite3.Error as e:
             logger.error(f"Gagal menghapus video: {e}")
             return 0
+
+    # Computed properties untuk UI display
+    @property
+    def upload_date_only(self) -> str:
+        """Tanggal upload saja (YYYY-MM-DD)."""
+        if not self.upload_date:
+            return ""
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(self.upload_date.replace("Z", "+00:00"))
+            return dt.strftime("%Y-%m-%d")
+        except:
+            return self.upload_date[:10] if len(self.upload_date) >= 10 else ""
+
+    @property
+    def upload_time_only(self) -> str:
+        """Waktu upload saja (HH:MM)."""
+        if not self.upload_date:
+            return ""
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(self.upload_date.replace("Z", "+00:00"))
+            return dt.strftime("%H:%M")
+        except:
+            return ""
+
+    @property
+    def views_formatted(self) -> str:
+        """Views dalam format ribuan (1K, 1M, etc.)."""
+        views = self.views or 0
+        if views >= 1000000:
+            return f"{views / 1000000:.1f}M"
+        elif views >= 1000:
+            return f"{views / 1000:.1f}K"
+        return str(views)
+
+    @property
+    def subscribers_formatted(self) -> str:
+        """Subscribers dalam format ribuan."""
+        subs = self.subscriber_count or 0
+        if subs >= 1000000:
+            return f"{subs / 1000000:.1f}M"
+        elif subs >= 1000:
+            return f"{subs / 1000:.1f}K"
+        return str(subs)
+
+    @property
+    def vph(self) -> float:
+        """
+        Views Per Hour - VPH.
+
+        Hitungan: views / (days_ago × 24)
+        """
+        if self.upload_days_ago and self.upload_days_ago > 0:
+            hours = self.upload_days_ago * 24
+            return round(self.views / hours, 2) if self.views else 0
+        return 0.0
+
+    @property
+    def engagement_rate(self) -> float:
+        """
+        Engagement Rate % = (likes / views) × 100.
+
+        Returns 0.0 jika likes = 0.
+        """
+        if self.views and self.views > 0:
+            return round((self.likes / self.views) * 100, 2)
+        return 0.0
+
+    @property
+    def channel_url(self) -> str:
+        """URL channel YouTube."""
+        return f"https://www.youtube.com/channel/{self.channel_id}"
+
+    @property
+    def country_name(self) -> str:
+        """Nama country dari channel location code."""
+        if not self.channel_location:
+            return "Unknown"
+
+        country_map = {
+            "US": "United States",
+            "GB": "United Kingdom",
+            "CA": "Canada",
+            "AU": "Australia",
+            "IN": "India",
+            "ID": "Indonesia",
+            "SG": "Singapore",
+            "MY": "Malaysia",
+            "PH": "Philippines",
+            "TH": "Thailand",
+            "VN": "Vietnam",
+            "DE": "Germany",
+            "FR": "France",
+            "IT": "Italy",
+            "ES": "Spain",
+            "NL": "Netherlands",
+            "BR": "Brazil",
+            "MX": "Mexico",
+            "JP": "Japan",
+            "KR": "South Korea",
+            "NZ": "New Zealand",
+        }
+        return country_map.get(self.channel_location.upper(), self.channel_location)

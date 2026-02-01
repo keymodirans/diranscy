@@ -188,6 +188,7 @@ class YouTubeAPI:
                         "channel_title": item["snippet"]["channelTitle"],
                         "upload_date": item["snippet"]["publishedAt"],
                         "views": int(item["statistics"].get("viewCount", 0)),
+                        "likes": int(item["statistics"].get("likeCount", 0)),
                         "description": item["snippet"].get("description", ""),
                         "thumbnail_url": self._extract_thumbnail(
                             item["snippet"]["thumbnails"]

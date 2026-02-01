@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS videos (
     upload_date TEXT NOT NULL,
     upload_days_ago INTEGER DEFAULT 0,
     views INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
     thumbnail_url TEXT NOT NULL,
     description TEXT,
 

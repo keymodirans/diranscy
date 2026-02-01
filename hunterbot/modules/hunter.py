@@ -302,6 +302,7 @@ class HunterModule:
                                 upload_date=video_data["upload_date"],
                                 upload_days_ago=filter_results["days_ago"],
                                 views=video_data["views"],
+                                likes=video_data.get("likes", 0),
                                 thumbnail_url=video_data["thumbnail_url"],
                                 description=description,
                                 state=Video.STATE_SCRAPED,
